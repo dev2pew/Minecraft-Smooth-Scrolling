@@ -93,6 +93,9 @@ public class CreativeScreenMixin {
             original
         );
 
+        int drawOffset = SmoothSc.getCreativeDrawOffset();
+        int repeatOffset = -inventoryHeight * Integer.signum(SmoothSc.getCreativeScrollOffset());
+
         context.enableScissor(
             inventoryX,
             inventoryY + 1,
@@ -100,11 +103,14 @@ public class CreativeScreenMixin {
             inventoryY + inventoryHeight - 1
         );
         context.getMatrices().pushMatrix();
-        context.getMatrices().translate(0, SmoothSc.getCreativeDrawOffset());
+        context.getMatrices().translate(0, drawOffset);
 
         if (SmScCfg.creativeUseScissorTexture) {
             // Preserve the original full GUI draw call. Resource packs that alter
             // GUI quad size or position in a shader can depend on those dimensions.
+            // Each repeated frame is clipped to the part of its *inventory* region
+            // that actually intersects the fixed viewport. This prevents both gaps
+            // at the leading edge and double-blending of translucent pack pixels.
             smoothscroll$drawCompatibilityFrame(
                 context,
                 renderPipeline,
@@ -121,11 +127,11 @@ public class CreativeScreenMixin {
                 inventoryY,
                 inventoryWidth,
                 inventoryHeight,
-                false,
+                drawOffset,
                 original
             );
 
-            context.getMatrices().translate(0, inventoryHeight);
+            context.getMatrices().translate(0, repeatOffset);
 
             smoothscroll$drawCompatibilityFrame(
                 context,
@@ -143,7 +149,7 @@ public class CreativeScreenMixin {
                 inventoryY,
                 inventoryWidth,
                 inventoryHeight,
-                true,
+                drawOffset + repeatOffset,
                 original
             );
         } else {
@@ -161,7 +167,10 @@ public class CreativeScreenMixin {
                 textureHeight
             );
 
-            context.getMatrices().translate(0, inventoryHeight);
+            // The 1.21.8 renderer's offset is signed. Repeat the texture on the
+            // side from which a new row is entering, matching the original 2.3.1
+            // implementation instead of always placing the repeat below.
+            context.getMatrices().translate(0, repeatOffset);
 
             original.call(
                 context,
@@ -262,11 +271,20 @@ public class CreativeScreenMixin {
         int inventoryY,
         int inventoryWidth,
         int inventoryHeight,
-        boolean secondFrame,
+        int frameOffsetY,
         Operation<Void> original
     ) {
-        int minY = secondFrame ? inventoryY + 1 : inventoryY;
-        int maxY = secondFrame ? inventoryY + inventoryHeight : inventoryY + inventoryHeight + 1;
+        int viewportMinY = inventoryY + 1;
+        int viewportMaxY = inventoryY + inventoryHeight - 1;
+        int frameMinY = inventoryY + frameOffsetY;
+        int frameMaxY = frameMinY + inventoryHeight;
+
+        int minY = Math.max(viewportMinY, frameMinY);
+        int maxY = Math.min(viewportMaxY, frameMaxY);
+
+        if (maxY <= minY) {
+            return;
+        }
 
         context.enableScissor(inventoryX, minY, inventoryX + inventoryWidth, maxY);
         original.call(context, renderPipeline, texture, x, y, u, v, width, height, textureWidth, textureHeight);

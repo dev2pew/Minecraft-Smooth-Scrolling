@@ -31,3 +31,7 @@ Minecraft 1.21.8 on Fabric, using Smooth Scrolling's 1.21.6 maintenance source l
 - The transparent-texture correction omits the moving viewport from the static background pass, preventing that viewport from being alpha-blended twice.
 
 A local `./gradlew clean build` was attempted. The wrapper could not download Gradle 8.8 because this execution environment cannot resolve `services.gradle.org`, so compilation could not start here. Run the build on a networked machine before treating the JAR as release-tested.
+
+## Edge transparency follow-up
+
+The first compatibility backport always repeated the animated inventory texture `+90` pixels below the first copy. The 1.21.8 renderer uses a signed scroll offset; upstream 2.3.1 repeated the second copy on the side selected by `signum(creativeScreenScrollOffset)`. The fixed backport restores that direction-aware repeat and clips each full-GUI compatibility draw to the exact intersection of its inventory tile with the viewport. This removes uncovered leading-edge rows without double-blending translucent resource-pack pixels.

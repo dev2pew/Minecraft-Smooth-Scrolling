@@ -22,7 +22,7 @@ Linux/macOS:
 The normal output JAR is:
 
 ```text
-build/libs/smoothscroll-2.3.1-rpcompat.1.jar
+build/libs/smoothscroll-2.3.1-rpcompat.2.jar
 ```
 
 The build also creates a sources JAR. Install the normal JAR, not the sources JAR.
@@ -31,8 +31,9 @@ The build also creates a sources JAR. Install the normal JAR, not the sources JA
 
 1. Use a Fabric Minecraft 1.21.8 instance with Java 21.
 2. Remove the original Smooth Scrolling JAR from that instance. Do not load two JARs with the same `smoothscroll` mod ID.
-3. Put `build/libs/smoothscroll-2.3.1-rpcompat.1.jar` in the instance `mods` directory.
+3. Put `build/libs/smoothscroll-2.3.1-rpcompat.2.jar` in the instance `mods` directory.
 4. Keep the GUI resource pack that reproduced the duplicated-texture artifact available for comparison.
+5. Capture both scroll directions. The leading edge of the animated inventory grid must not become more transparent at the top or bottom of the viewport.
 
 ## Test matrix
 
