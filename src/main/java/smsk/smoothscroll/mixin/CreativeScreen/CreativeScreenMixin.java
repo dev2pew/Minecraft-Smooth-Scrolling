@@ -22,6 +22,12 @@ import smsk.smoothscroll.cfg.SmScCfg;
 @Mixin(CreativeInventoryScreen.class)
 public class CreativeScreenMixin {
 
+    @Unique
+    private static final int SMOOTHSCROLL_ROW_HEIGHT = 18;
+
+    @Unique
+    private static final int SMOOTHSCROLL_ROW_COUNT = 5;
+
     @Inject(method = "setSelectedTab", at = @At("TAIL"))
     private void setSelectedTabT(ItemGroup group, CallbackInfo ci) {
         SmoothSc.creativeScreenScrollOffset = 0;
@@ -61,19 +67,20 @@ public class CreativeScreenMixin {
         SmoothSc.creativeScreenScrollMixin = false;
         SmoothSc.creativeSH.scrollItems(
             ((CreativeScreenHandlerAccessor) SmoothSc.creativeSH)
-                .getPos(SmoothSc.creativeScreenPrevRow - SmoothSc.getCreativeScrollOffset() / 18)
+                .getPos(SmoothSc.creativeScreenPrevRow - SmoothSc.getCreativeScrollOffset() / SMOOTHSCROLL_ROW_HEIGHT)
         );
         SmoothSc.creativeScreenScrollMixin = true;
 
         int inventoryX = x + 8;
         int inventoryY = y + 17;
-        int inventoryWidth = 162;
-        int inventoryHeight = 90;
+        int inventoryWidth = SMOOTHSCROLL_ROW_HEIGHT * 9;
+        int inventoryHeight = SMOOTHSCROLL_ROW_HEIGHT * SMOOTHSCROLL_ROW_COUNT;
         float inventoryU = u + 8;
         float inventoryV = v + 17;
 
-        // Do not draw the static inventory viewport first. Drawing it again as the
-        // moving viewport blends translucent resource-pack pixels twice.
+        // The vanilla/background resource-pack draw still owns everything outside
+        // the moving five-row slot viewport. Keeping the viewport out of this pass
+        // avoids blending translucent pack pixels twice.
         smoothscroll$drawBackgroundOutsideInventory(
             context,
             renderPipeline,
@@ -94,24 +101,21 @@ public class CreativeScreenMixin {
         );
 
         int drawOffset = SmoothSc.getCreativeDrawOffset();
-        int repeatOffset = -inventoryHeight * Integer.signum(SmoothSc.getCreativeScrollOffset());
-
-        context.enableScissor(
-            inventoryX,
-            inventoryY + 1,
-            inventoryX + inventoryWidth,
-            inventoryY + inventoryHeight - 1
-        );
-        context.getMatrices().pushMatrix();
-        context.getMatrices().translate(0, drawOffset);
 
         if (SmScCfg.creativeUseScissorTexture) {
-            // Preserve the original full GUI draw call. Resource packs that alter
-            // GUI quad size or position in a shader can depend on those dimensions.
-            // Each repeated frame is clipped to the part of its *inventory* region
-            // that actually intersects the fixed viewport. This prevents both gaps
-            // at the leading edge and double-blending of translucent pack pixels.
-            smoothscroll$drawCompatibilityFrame(
+            /*
+             * Resource-pack compatibility mode deliberately keeps the original
+             * full-GUI draw call. Some packs use shaders that depend on the full
+             * Creative GUI quad dimensions and break when Smooth Scrolling draws
+             * only a 162x90 texture crop.
+             *
+             * Instead of moving two whole 90-pixel copies, render the five slot
+             * rows as cyclic 18-pixel strips. Each strip is clipped to its own
+             * destination band, and a wrapped copy is drawn when the strip crosses
+             * the top or bottom edge. The strips therefore tile the viewport
+             * without exposing adjacent GUI artwork or leaving an uncovered seam.
+             */
+            smoothscroll$drawCompatibilityRows(
                 context,
                 renderPipeline,
                 texture,
@@ -130,29 +134,16 @@ public class CreativeScreenMixin {
                 drawOffset,
                 original
             );
-
-            context.getMatrices().translate(0, repeatOffset);
-
-            smoothscroll$drawCompatibilityFrame(
-                context,
-                renderPipeline,
-                texture,
-                x,
-                y,
-                u,
-                v,
-                width,
-                height,
-                textureWidth,
-                textureHeight,
-                inventoryX,
-                inventoryY,
-                inventoryWidth,
-                inventoryHeight,
-                drawOffset + repeatOffset,
-                original
-            );
         } else {
+            context.enableScissor(
+                inventoryX,
+                inventoryY + 1,
+                inventoryX + inventoryWidth,
+                inventoryY + inventoryHeight - 1
+            );
+            context.getMatrices().pushMatrix();
+            context.getMatrices().translate(0, drawOffset);
+
             original.call(
                 context,
                 renderPipeline,
@@ -167,9 +158,9 @@ public class CreativeScreenMixin {
                 textureHeight
             );
 
-            // The 1.21.8 renderer's offset is signed. Repeat the texture on the
-            // side from which a new row is entering, matching the original 2.3.1
-            // implementation instead of always placing the repeat below.
+            // The 1.21.8 renderer has a signed offset. Repeat the cropped slot
+            // texture on the side from which the next row is entering.
+            int repeatOffset = -inventoryHeight * Integer.signum(SmoothSc.getCreativeScrollOffset());
             context.getMatrices().translate(0, repeatOffset);
 
             original.call(
@@ -185,9 +176,10 @@ public class CreativeScreenMixin {
                 textureWidth,
                 textureHeight
             );
-        }
 
-        context.getMatrices().popMatrix();
+            context.getMatrices().popMatrix();
+            context.disableScissor();
+        }
 
         if (SmScCfg.enableMaskDebug) {
             context.fill(
@@ -198,8 +190,6 @@ public class CreativeScreenMixin {
                 ColorHelper.getArgb(50, 255, 255, 0)
             );
         }
-
-        context.disableScissor();
     }
 
     @Unique
@@ -212,6 +202,98 @@ public class CreativeScreenMixin {
 
         return !(FabricLoader.getInstance().getObjectShare().get("flow:is_caching_screen") instanceof Boolean isCaching)
             || !isCaching;
+    }
+
+    @Unique
+    private static void smoothscroll$drawCompatibilityRows(
+        DrawContext context,
+        RenderPipeline renderPipeline,
+        Identifier texture,
+        int x,
+        int y,
+        float u,
+        float v,
+        int width,
+        int height,
+        int textureWidth,
+        int textureHeight,
+        int inventoryX,
+        int inventoryY,
+        int inventoryWidth,
+        int inventoryHeight,
+        int drawOffset,
+        Operation<Void> original
+    ) {
+        int viewportMinY = inventoryY + 1;
+        int viewportMaxY = inventoryY + inventoryHeight - 1;
+
+        for (int row = 0; row < SMOOTHSCROLL_ROW_COUNT; row++) {
+            int sourceRowY = inventoryY + row * SMOOTHSCROLL_ROW_HEIGHT;
+            int destinationY = sourceRowY + drawOffset;
+
+            // Normal position plus both cyclic neighbours. Because drawOffset is
+            // modulo one slot row, only one neighbour can intersect the viewport.
+            smoothscroll$drawCompatibilityRowCandidate(
+                context, renderPipeline, texture,
+                x, y, u, v, width, height, textureWidth, textureHeight,
+                inventoryX, inventoryWidth,
+                viewportMinY, viewportMaxY,
+                sourceRowY, destinationY,
+                original
+            );
+            smoothscroll$drawCompatibilityRowCandidate(
+                context, renderPipeline, texture,
+                x, y, u, v, width, height, textureWidth, textureHeight,
+                inventoryX, inventoryWidth,
+                viewportMinY, viewportMaxY,
+                sourceRowY, destinationY - inventoryHeight,
+                original
+            );
+            smoothscroll$drawCompatibilityRowCandidate(
+                context, renderPipeline, texture,
+                x, y, u, v, width, height, textureWidth, textureHeight,
+                inventoryX, inventoryWidth,
+                viewportMinY, viewportMaxY,
+                sourceRowY, destinationY + inventoryHeight,
+                original
+            );
+        }
+    }
+
+    @Unique
+    private static void smoothscroll$drawCompatibilityRowCandidate(
+        DrawContext context,
+        RenderPipeline renderPipeline,
+        Identifier texture,
+        int x,
+        int y,
+        float u,
+        float v,
+        int width,
+        int height,
+        int textureWidth,
+        int textureHeight,
+        int inventoryX,
+        int inventoryWidth,
+        int viewportMinY,
+        int viewportMaxY,
+        int sourceRowY,
+        int destinationY,
+        Operation<Void> original
+    ) {
+        int minY = Math.max(viewportMinY, destinationY);
+        int maxY = Math.min(viewportMaxY, destinationY + SMOOTHSCROLL_ROW_HEIGHT);
+
+        if (maxY <= minY) {
+            return;
+        }
+
+        context.enableScissor(inventoryX, minY, inventoryX + inventoryWidth, maxY);
+        context.getMatrices().pushMatrix();
+        context.getMatrices().translate(0, destinationY - sourceRowY);
+        original.call(context, renderPipeline, texture, x, y, u, v, width, height, textureWidth, textureHeight);
+        context.getMatrices().popMatrix();
+        context.disableScissor();
     }
 
     @Unique
@@ -252,43 +334,6 @@ public class CreativeScreenMixin {
             context, inventoryX + inventoryWidth, inventoryY + 1, screenWidth, inventoryY + inventoryHeight - 1,
             renderPipeline, texture, x, y, u, v, width, height, textureWidth, textureHeight, original
         );
-    }
-
-    @Unique
-    private static void smoothscroll$drawCompatibilityFrame(
-        DrawContext context,
-        RenderPipeline renderPipeline,
-        Identifier texture,
-        int x,
-        int y,
-        float u,
-        float v,
-        int width,
-        int height,
-        int textureWidth,
-        int textureHeight,
-        int inventoryX,
-        int inventoryY,
-        int inventoryWidth,
-        int inventoryHeight,
-        int frameOffsetY,
-        Operation<Void> original
-    ) {
-        int viewportMinY = inventoryY + 1;
-        int viewportMaxY = inventoryY + inventoryHeight - 1;
-        int frameMinY = inventoryY + frameOffsetY;
-        int frameMaxY = frameMinY + inventoryHeight;
-
-        int minY = Math.max(viewportMinY, frameMinY);
-        int maxY = Math.min(viewportMaxY, frameMaxY);
-
-        if (maxY <= minY) {
-            return;
-        }
-
-        context.enableScissor(inventoryX, minY, inventoryX + inventoryWidth, maxY);
-        original.call(context, renderPipeline, texture, x, y, u, v, width, height, textureWidth, textureHeight);
-        context.disableScissor();
     }
 
     @Unique

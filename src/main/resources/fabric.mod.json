@@ -9,7 +9,7 @@
 	],
 	"contact": {
 		"homepage": "https://modrinth.com/mod/smooth-scroll",
-		"sources": "https://github.com/SmajloSlovakian/Minecraft-Smooth-Scrolling"
+		"sources": "https://github.com/dev2pew/Minecraft-Smooth-Scrolling"
 	},
 	"license": "gpl-3.0",
 	"icon": "assets/smoothscroll/icon.png",
@@ -27,7 +27,7 @@
 	],
 	"depends": {
 		"fabricloader": ">=0.14.21",
-		"minecraft": ">=1.21.6",
+		"minecraft": ">=1.21.6 <=1.21.8",
 		"java": ">=21"
 	},
 	"suggests": {

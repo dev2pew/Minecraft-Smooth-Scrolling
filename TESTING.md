@@ -1,13 +1,17 @@
 # Build and user-test guide
 
-## Build
+## Automatic CI build
+
+Every push to this repository runs `.github/workflows/build.yml`. Open the GitHub Actions run and download the `smooth-scroll-<commit>` artifact after the Build job succeeds.
+
+## Local build
 
 Requirements:
 
 - JDK 21
-- Internet access for the Gradle wrapper and Fabric/Maven dependencies on the first build
+- Internet access for Gradle/Fabric dependencies on the first build
 
-Windows PowerShell or Command Prompt:
+Windows:
 
 ```text
 gradlew.bat clean build
@@ -19,68 +23,50 @@ Linux/macOS:
 ./gradlew clean build
 ```
 
-The normal output JAR is:
+Expected normal JAR:
 
 ```text
-build/libs/smoothscroll-2.3.1-rpcompat.2.jar
+build/libs/smoothscroll-2.3.1-rpcompat.3.jar
 ```
 
-The build also creates a sources JAR. Install the normal JAR, not the sources JAR.
+Install the normal JAR, not the sources JAR.
 
-## Install for testing
+## Resource-pack regression test
 
-1. Use a Fabric Minecraft 1.21.8 instance with Java 21.
-2. Remove the original Smooth Scrolling JAR from that instance. Do not load two JARs with the same `smoothscroll` mod ID.
-3. Put `build/libs/smoothscroll-2.3.1-rpcompat.2.jar` in the instance `mods` directory.
-4. Keep the GUI resource pack that reproduced the duplicated-texture artifact available for comparison.
-5. Capture both scroll directions. The leading edge of the animated inventory grid must not become more transparent at the top or bottom of the viewport.
+1. Use Fabric Minecraft 1.21.8 with Java 21.
+2. Remove any other Smooth Scrolling JAR from the instance.
+3. Install `smoothscroll-2.3.1-rpcompat.3.jar`.
+4. Enable the GUI resource pack that reproduced the Creative-inventory artifact.
+5. Enable `Creative Screen > RP Compatibility Mode`.
+6. Scroll slowly up and down through a tab with enough rows to scroll.
+7. Record the top and bottom edges of the slot grid while the animation is between rows.
 
-## Test matrix
+Expected result: the five moving slot rows remain continuously covered. A row that exits one edge wraps to the opposite edge without a transparent band, copied GUI controls, or a dark overlap seam.
 
-### Baseline without a custom GUI pack
+## Additional checks
 
-- Leave `Creative Screen > RP Compatibility Mode` set to `false`.
-- Open the Creative inventory and scroll up and down through a long tab.
-- Check for missing slot backgrounds, seams, duplicated GUI pieces, incorrect item positions, or cursor/slot-highlight desynchronization.
-- Switch tabs during and immediately after scrolling.
-- Resize the window and repeat the test.
+Test:
 
-Expected result: behavior should match the original 2.3.1 branch except for the transparent-texture-safe background composition used while the Creative scroll animation is active.
+- vanilla textures with compatibility mode off;
+- vanilla textures with compatibility mode on;
+- the affected resource pack in both scroll directions;
+- Search and Building Blocks tabs;
+- first and last scroll positions;
+- rapid wheel input;
+- tab changes while an animation is settling;
+- window resizing and the GUI scales normally used;
+- translucent Creative GUI textures;
+- Condensed Creative or Flow if present in the real modpack.
 
-### Problematic GUI resource pack
+A compiler warning about the optional Condensed Creative injection target can still appear when that dependency is only available as a compile-time compatibility target. Treat a runtime `MixinApplyError`, `InvalidInjectionException`, or `InjectionError` as a real failure.
 
-- Enable the GUI resource pack that produced the miniature/duplicated Creative GUI texture.
-- First test with `RP Compatibility Mode` set to `false` and confirm the original compatibility problem is still reproducible if that pack needs the compatibility path.
-- Set `RP Compatibility Mode` to `true` and save the config. Restart the screen or game if the config UI does not refresh the value immediately.
-- Scroll repeatedly in both directions.
+## Manual GitHub prerelease
 
-Expected result: the moving inventory viewport should use the resource pack's full GUI texture draw rather than a hard-coded cropped quad, so packs that alter GUI texture size or position through shaders should keep their intended geometry.
+The Release test build workflow is deliberately manual.
 
-### Transparent and translucent GUI textures
+1. Open Actions > Release test build.
+2. Select `fix/1.21.8-rpcompat-tiling` while this branch is under test.
+3. Enter `2.3.1-rpcompat.3`.
+4. Run the workflow.
 
-Use a pack whose Creative inventory background contains alpha transparency. Scroll while watching the slot-grid area and its borders.
-
-Expected result: translucent pixels in the moving inventory viewport should not darken or become more opaque from being blended once as the static GUI and a second time as the moving viewport.
-
-### Edge cases
-
-Also check:
-
-- top and bottom of a scrollable Creative tab;
-- rapid mouse-wheel input;
-- changing Creative tabs while an animation is still settling;
-- the Search tab;
-- opening and closing the inventory repeatedly;
-- GUI scales you normally use;
-- Condensed Creative or Flow if either mod is part of the real modpack.
-
-## Reporting a failure
-
-For a rendering failure, keep these together:
-
-- screenshot or short recording;
-- resource-pack name and version;
-- whether `RP Compatibility Mode` was `true` or `false`;
-- Minecraft/Fabric Loader versions;
-- other GUI-rendering mods in the instance;
-- `latest.log` from the affected launch.
+The workflow validates the version, builds the JAR, creates tag `v2.3.1-rpcompat.3`, and publishes a GitHub prerelease.
