@@ -14,6 +14,7 @@ public class SmScCfg extends NewConfig {
     public static float suggestionWindowSmoothness;
     public static float suggestionWindowAmount;
     public static float creativeScreenSmoothness;
+    public static boolean creativeUseScissorTexture;
     public static float entryListSmoothness;
     public static double entryListAmount;
     public static boolean enableMaskDebug;
@@ -37,7 +38,10 @@ public class SmScCfg extends NewConfig {
             new CfgValueBuilder("Suggestion Speed", 30.0f).minMax(0, 100).step(1).format("%s: %s px").map(0.0, "Auto").build()
         ))).build(),
         new CfgValueBuilder("Creative Screen", new ArrayList<CfgValue>(Arrays.asList(
-            new CfgValueBuilder("Smoothness", 0.5f).minMax(0, 1).map(0.0, "Off").map(1.0, "No Scrolling").build()
+            new CfgValueBuilder("Smoothness", 0.5f).minMax(0, 1).map(0.0, "Off").map(1.0, "No Scrolling").build(),
+            new CfgValueBuilder("RP Compatibility Mode", false)
+                .tooltip("Enable when a resource pack changes the Creative inventory GUI texture size or position. Leave disabled for vanilla-style GUI textures.")
+                .build()
         ))).build(),
         new CfgValueBuilder("Entry List", new ArrayList<CfgValue>(Arrays.asList(
             new CfgValueBuilder("Smoothness", 0.5f).minMax(0, 1).map(0.0, "Off").map(1.0, "No Scrolling").build(),
@@ -65,6 +69,7 @@ public class SmScCfg extends NewConfig {
         suggestionWindowAmount = (float) root.get("Chat").get("Suggestion Speed").getValue();
 
         creativeScreenSmoothness = (float) root.get("Creative Screen").get("Smoothness").getValue();
+        creativeUseScissorTexture = (boolean) root.get("Creative Screen").get("RP Compatibility Mode").getValue();
 
         entryListSmoothness = (float) root.get("Entry List").get("Smoothness").getValue();
         entryListAmount = (float) root.get("Entry List").get("Speed").getValue();
